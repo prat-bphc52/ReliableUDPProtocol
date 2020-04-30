@@ -4,7 +4,7 @@ import java.io.*;
 class CClient{
 	public static void main(String[] args) throws IOException{
 		if(args.length<5){
-			System.out.println("Please specify the HostIP, Port number, , Target IP, Target Port number and Input file name...");
+			System.out.println("Please specify the HostIP, Port number, Target IP, Target Port number and Input file name...");
 			return;
 		}
 		InetAddress hostIP = InetAddress.getByName(args[0]);
