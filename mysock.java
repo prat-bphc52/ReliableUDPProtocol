@@ -25,6 +25,10 @@ class MyReliableUDPSocket extends DatagramSocket{
 	}
 
 	public int send(byte[] arr, InetAddress destAddr, int destPort){
+		if(arr.length==0){
+			System.out.println("No data to be sent!!!");
+			return 0;
+		}
 		byte[] idArr = new byte[TRANSMISSION_ID_PACKET_LENGTH];// initial packet containing single transmissions info
 
 		byte[] temp;
@@ -68,23 +72,51 @@ class MyReliableUDPSocket extends DatagramSocket{
 
 		ths.startReceiverThread(this);
 
+        System.out.println("Sending Seq 0 packet");
+        System.out.println("Packet ID : Timestamp - "+ ths.packetID);
         try{
-        	System.out.println("Sending Seq 0 packet");
-        	System.out.println("Packet ID : Timestamp - "+ ths.packetID);
         	send(idPacket);
+		} catch(Exception e){
+        	System.out.println("Failed to send data");
+        }
 
-        	byte[] pc_id = longtoBytes(ths.packetID);
-        	for(int i=0;i<ths.packetCount;i++){
-        		DatagramPacket dp = createDataPacket(i+2, pc_id, arr, i*MAX_PACKET_DATA_LENGTH,destAddr, destPort);
-        		ths.map.put(i+2, dp);
-        		System.out.println("Sending Seq "+(i+2)+" packet");
+        byte[] pc_id = longtoBytes(ths.packetID);
+        for(int i=0;i<ths.packetCount;i++){
+        	DatagramPacket dp = createDataPacket(i+2, pc_id, arr, i*MAX_PACKET_DATA_LENGTH,destAddr, destPort);
+        	ths.map.put(i+2, dp);
+        	System.out.println("Sending Seq "+(i+2)+" packet");
+        	try{
         		send(dp);
+			} catch(Exception e){
+        		System.out.println("Failed to send data");
         	}
         }
-        catch(Exception e){
-        	System.out.println("Failed to send data");
-        	return -1;
-        }
+       	System.out.print("Completed sending 1st batch of data");
+        // finished sending 1st batch of data
+
+        boolean flag;//exit status
+        do{
+        	flag = true;
+        	try{
+	        	Thread.sleep(1000);
+    		}
+    		catch(Exception e){
+    		
+    		}
+        	for(int i=1;i<=ths.packetCount+1;i++){
+        		if(!ths.ackStatus.containsKey(i)){
+        			try{
+	        			send(ths.map.get(i));
+					} catch(Exception e){
+        				System.out.println("Failed to send data");
+        			}
+        			System.out.println("Sending again Seq "+i+" packet");
+        			flag = false;
+        		}
+        	}
+        }while(!flag);
+        ths.stopReceiverThread();
+        System.out.println("End sending data");
         return 0;
 	}
 
@@ -96,18 +128,50 @@ class MyReliableUDPSocket extends DatagramSocket{
 				buf = new byte[MAX_PACKET_SIZE];
 				DatagramPacket recv = new DatagramPacket(buf, buf.length);
         		receive(recv);
-				System.out.println(buf.toString());
         		int seqNo = getIntFromByteArray(buf, 0);
-        		long packetID = getLongFromByteArray(buf ,4);
-        		System.out.println("\n**Received a packet** \nAddress:"+recv.getAddress()+" Port"+recv.getPort()+" Seq no "+seqNo +" Packet ID"+packetID);
-        		send(createAckPacket(seqNo,packetID,recv.getAddress(),recv.getPort()));
+        		long pID = getLongFromByteArray(buf ,4);
+        		if(thr.packetID==0){
+        			thr.packetID = pID;
+        			thr.senderIP = recv.getAddress().toString();
+        		}
+        		else if(thr.packetID!=pID || !thr.senderIP.equals(recv.getAddress().toString()))//to receive only the current transmission data
+        			continue;
+        		System.out.println("\n**Received a packet** \nAddress:"+recv.getAddress()+" Port"+recv.getPort()+" Seq no "+seqNo +" Packet ID"+pID);
+        		send(createAckPacket(seqNo*-1,thr.packetID,recv.getAddress(),recv.getPort()));
+        		if(seqNo>0){
+        			if(!thr.map.containsKey(seqNo)){
+        				thr.map.put(seqNo, recv);
+        				if(seqNo == 1){
+        					thr.packetCount = getIntFromByteArray(buf, 12);
+        					thr.dataLength = getIntFromByteArray(buf, 16);
+        					// thr.data = new byte[thr.dataLength];
+        				}
+        				else{
+        					thr.receivedCount++;
+        				}
+        			}
+        			else{
+        				System.out.println("Received a repeated packet");
+        			}
+        		}
+        		if(thr.packetCount!=0 && thr.packetCount == thr.receivedCount)
+        			break;
         	}
         	catch(Exception e){
         		System.out.println("Error while receiving data");
         		return null;
         	}
     	}
-		// return buf;
+    	buf = new byte[thr.dataLength];
+    	int dc=0;
+    	for(int i=2;i<=thr.packetCount+1;i++){//until second last packet
+    		DatagramPacket dp = thr.map.get(i);
+    		int varc = 0;
+    		do{
+    			buf[dc++] = dp.getData()[varc++];
+    		}while(varc != MAX_PACKET_DATA_LENGTH && dc != thr.dataLength);
+    	}
+		return buf;
 	}
 
 	public static byte[] longtoBytes(long data) {
@@ -193,7 +257,6 @@ class TransmissionHelperSender{
 	long packetID;
 	int packetCount;
 	int dataLength;
-	int receivedCount;
 	HashMap<Integer, DatagramPacket> map;
 	HashMap<Integer, Boolean> ackStatus;
 
@@ -216,6 +279,8 @@ class TransmissionHelperSender{
 	        			sock.receive(recv);
 	        			int seqNo = MyReliableUDPSocket.getIntFromByteArray(buf, 0);
 	        			long pID = MyReliableUDPSocket.getLongFromByteArray(buf ,4);
+	        			System.out.println("Received a packet "+ pID + " Seq No "+ seqNo);
+
 	        			if(seqNo<0){
 	        				System.out.println("Received acknowledgement "+ pID + " Seq No "+ seqNo);
 	        				if(packetID == pID){
@@ -241,11 +306,14 @@ class TransmissionHelperRecevier{
 	long packetID;
 	int packetCount;//doesn't include the seq 0 packet
 	int dataLength;
-
+	String senderIP;
+	int writtenPackets; //packets already written in the data
+	int receivedCount;
 	byte[] data;
 
 	HashMap<Integer, DatagramPacket> map;
 	HashMap<Integer, Boolean> writtenStatus; // true if yet to be written otherwise not present
+
 	public TransmissionHelperRecevier(){
 		map = new HashMap<>();
 	}
