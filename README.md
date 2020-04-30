@@ -32,3 +32,10 @@ Start the client and pass the following arguments **hostIP** **hostPort** **dest
 ```
 java CClient 127.0.0.1 6001 127.0.0.1 6000 input.txt
 ```
+
+## Team Members
+- [Prateek Agarwal](https://github.com/prat-bphc52/ "Prateek Agarwal") 2017A7PS0075H
+- Rashi Jain - 2017A7PS0082H
+- Shreeya Bharat Nelekar 2017A7PS0193H
+- Ankit Bansal - 2017A7PS0159H
+- [Utkarsh Grover](https://github.com/utkgrover/ "Utkarsh Grover") - 2017A7PS1428H
