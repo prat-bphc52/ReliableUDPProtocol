@@ -3,8 +3,8 @@ import java.io.*;
 
 class CServer{
 	public static void main(String[] args)throws IOException {
-		if(args.length<2){
-			System.out.println("Please specify the HostIP and Port number...");
+		if(args.length<3){
+			System.out.println("Please specify the HostIP, Port number and Output file name...");
 			return;
 		}
 		InetAddress hostIP = InetAddress.getByName(args[0]);
@@ -12,8 +12,10 @@ class CServer{
 
 		MyReliableUDPSocket sock = MyReliableUDPSocket.create(port, hostIP);
 
-		sock.receive();
-		// File f = new File("sample.txt");
-		// FileReader fr = new FileReader(f);
+		byte[] data = sock.receive();
+		File f = new File(args[2]);
+		OutputStream os = new FileOutputStream(f);
+		os.write(data);
+		os.close();
 	}
 }

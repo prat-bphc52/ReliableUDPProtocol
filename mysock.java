@@ -2,6 +2,8 @@ import java.util.*;
 import java.net.*;
 import java.io.*;
 import java.nio.ByteBuffer;
+import java.security.MessageDigest; 
+import java.security.NoSuchAlgorithmException;
 
 class MyReliableUDPSocket extends DatagramSocket{
 
@@ -166,10 +168,10 @@ class MyReliableUDPSocket extends DatagramSocket{
     	int dc=0;
     	for(int i=2;i<=thr.packetCount+1;i++){//until second last packet
     		DatagramPacket dp = thr.map.get(i);
-    		int varc = 0;
+    		int varc = 12;
     		do{
     			buf[dc++] = dp.getData()[varc++];
-    		}while(varc != MAX_PACKET_DATA_LENGTH && dc != thr.dataLength);
+    		}while(varc != MAX_PACKET_SIZE && dc != thr.dataLength);
     	}
 		return buf;
 	}
@@ -251,6 +253,34 @@ class MyReliableUDPSocket extends DatagramSocket{
 
 		return new DatagramPacket(pckt, pckt.length, destAddr, destPort);
 	}
+
+	public static String getMd5(String input) 
+    { 
+        try { 
+  
+            // Static getInstance method is called with hashing MD5 
+            MessageDigest md = MessageDigest.getInstance("MD5"); 
+  
+            // digest() method is called to calculate message digest 
+            //  of an input digest() return array of byte 
+            byte[] messageDigest = md.digest(input.getBytes()); 
+  
+            // Convert byte array into signum representation 
+            BigInteger no = new BigInteger(1, messageDigest); 
+  
+            // Convert message digest into hex value 
+            String hashtext = no.toString(16); 
+            while (hashtext.length() < 32) { 
+                hashtext = "0" + hashtext; 
+            } 
+            return hashtext; 
+        }  
+  
+        // For specifying wrong message digest algorithms 
+        catch (NoSuchAlgorithmException e) { 
+            throw new RuntimeException(e); 
+        } 
+    } 
 }
 
 class TransmissionHelperSender{
@@ -287,7 +317,6 @@ class TransmissionHelperSender{
 	        			int seqNo = MyReliableUDPSocket.getIntFromByteArray(buf, 0);
 	        			long pID = MyReliableUDPSocket.getLongFromByteArray(buf ,4);
 	        			System.out.println("Received a packet "+ pID + " Seq No "+ seqNo);
-
 	        			if(seqNo<0){
 	        				System.out.println("Received acknowledgement "+ pID + " Seq No "+ seqNo);
 	        				if(packetID == pID){
