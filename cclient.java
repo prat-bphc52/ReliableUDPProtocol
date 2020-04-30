@@ -12,6 +12,11 @@ class CClient{
 		MyReliableUDPSocket sock = MyReliableUDPSocket.create(port, hostIP);
 		
 		InetAddress senderIP = InetAddress.getByName("127.0.0.1");
-		sock.send(new byte[]{}, senderIP, 6000);
+
+		byte[] temp = new byte[10000];
+		for(int i=0;i<10000;i++){
+			temp[i]=(byte)i;
+		}
+		sock.send(temp, senderIP, 6000);
 	}
 }

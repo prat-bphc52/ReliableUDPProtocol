@@ -7,13 +7,14 @@ class MyReliableUDPSocket extends DatagramSocket{
 
 
 	private static int MAX_PACKET_DATA_LENGTH = 500;// in bytes
-	private static int MAX_PACKET_SIZE = Integer.BYTES+Long.BYTES+MAX_PACKET_DATA_LENGTH;
+	final static int MAX_PACKET_SIZE = Integer.BYTES+Long.BYTES+MAX_PACKET_DATA_LENGTH;
 	// 1st 4 bytes seq no, next 8 bytes packet id, 512 bytes
 	private static int TRANSMISSION_ID_PACKET_LENGTH = Integer.BYTES + Long.BYTES + Integer.BYTES + Integer.BYTES; 
 	// 20 bytes
-	// Integer for sequence number, Long for transmission ID, Integer Total number of packets, Integer Total data length in bytes
+	// Integer for sequence number, Long for transmission ID, Integer Total number of packets, Integer Total data length of byte array
 
 	private static int ACK_PCKT_DATA_LENGTH = Integer.BYTES + Long.BYTES;
+	// Seq no. in negative (to identify that these are acknowledgements)
 
 	public MyReliableUDPSocket(int port, InetAddress hostIP)throws SocketException{
 		super(port, hostIP);
@@ -27,23 +28,31 @@ class MyReliableUDPSocket extends DatagramSocket{
 		byte[] idArr = new byte[TRANSMISSION_ID_PACKET_LENGTH];// initial packet containing single transmissions info
 
 		byte[] temp;
-		int count = 4;//starts from 4 because first bytes are 0 by default
+		int count = 0;
 
-		// first 4 bytes 0000 seq numbeer
+		// seq number for transmission ID packet = 1
+		temp = inttoBytes(1);
+		for(int i=0;i<4;i++)
+			idArr[count++]=temp[i];
+
 		// next 8 bytes packet id
-		long timestamp = System.currentTimeMillis();
-		temp = longtoBytes(timestamp);//packet id
 
+		final TransmissionHelperSender ths = new TransmissionHelperSender();
+		ths.packetID = System.currentTimeMillis();
+		
+		ths.packetCount = arr.length / MAX_PACKET_DATA_LENGTH;
+		if(arr.length % MAX_PACKET_DATA_LENGTH != 0)
+			ths.packetCount++;
+
+		ths.dataLength = arr.length;
+
+		temp = longtoBytes(ths.packetID);//packet id
 		for(int i=0;i<8;i++)
 			idArr[count++]=temp[i];
 
-
-		// next 4 bytes packet count
-		int totPacketCount = arr.length / MAX_PACKET_DATA_LENGTH;
-		if(arr.length % MAX_PACKET_DATA_LENGTH != 0)
-			totPacketCount++;
-		temp = inttoBytes(totPacketCount);
 		
+		// next 4 bytes packet count
+		temp = inttoBytes(ths.packetCount);
 		for(int i=0;i<4;i++)
 			idArr[count++]=temp[i];
 
@@ -55,11 +64,22 @@ class MyReliableUDPSocket extends DatagramSocket{
 
 
 		DatagramPacket idPacket = new DatagramPacket(idArr, idArr.length, destAddr, destPort);
+		ths.map.put(1, idPacket);
+
+		ths.startReceiverThread(this);
+
         try{
         	System.out.println("Sending Seq 0 packet");
-        	System.out.println("Packet ID : Timestamp - "+ timestamp);
+        	System.out.println("Packet ID : Timestamp - "+ ths.packetID);
         	send(idPacket);
 
+        	byte[] pc_id = longtoBytes(ths.packetID);
+        	for(int i=0;i<ths.packetCount;i++){
+        		DatagramPacket dp = createDataPacket(i+2, pc_id, arr, i*MAX_PACKET_DATA_LENGTH,destAddr, destPort);
+        		ths.map.put(i+2, dp);
+        		System.out.println("Sending Seq "+(i+2)+" packet");
+        		send(dp);
+        	}
         }
         catch(Exception e){
         	System.out.println("Failed to send data");
@@ -69,29 +89,28 @@ class MyReliableUDPSocket extends DatagramSocket{
 	}
 
 	public byte[] receive(){
-		byte[] buf = new byte[MAX_PACKET_SIZE];
-		DatagramPacket recv = new DatagramPacket(buf, buf.length);
-		try{
-        	receive(recv);
-        	System.out.println("Received data length "+buf.length);
-			System.out.println(buf.toString());
-        	int seqNo = getIntFromByteArray(buf, 0);
-        	long packetID = getLongFromByteArray(buf ,4);
-        	System.out.println("Received a packet Address:"+recv.getAddress()+" Port"+recv.getPort()+" Seq no "+seqNo +" Packet ID"+packetID);
-        	send(createAckPacket(seqNo,packetID,recv.getAddress(),recv.getPort()));
-        }
-        catch(Exception e){
-        	System.out.println("Error while receiving data");
-        	return null;
-        }
-		System.out.println("Received Data");
-		for(int i=0;i<12;i++)
-			System.out.print(buf[i]+" ");
-		System.out.println();
-		return buf;
+		TransmissionHelperRecevier thr = new TransmissionHelperRecevier();
+		byte[] buf;
+		while(true){
+			try{
+				buf = new byte[MAX_PACKET_SIZE];
+				DatagramPacket recv = new DatagramPacket(buf, buf.length);
+        		receive(recv);
+				System.out.println(buf.toString());
+        		int seqNo = getIntFromByteArray(buf, 0);
+        		long packetID = getLongFromByteArray(buf ,4);
+        		System.out.println("\n**Received a packet** \nAddress:"+recv.getAddress()+" Port"+recv.getPort()+" Seq no "+seqNo +" Packet ID"+packetID);
+        		send(createAckPacket(seqNo,packetID,recv.getAddress(),recv.getPort()));
+        	}
+        	catch(Exception e){
+        		System.out.println("Error while receiving data");
+        		return null;
+        	}
+    	}
+		// return buf;
 	}
 
-	private static byte[] longtoBytes(long data) {
+	public static byte[] longtoBytes(long data) {
  		return new byte[]{
  			(byte) ((data >> 56) & 0xff),
  			(byte) ((data >> 48) & 0xff),
@@ -104,7 +123,7 @@ class MyReliableUDPSocket extends DatagramSocket{
  		};
 	}
 
-	private static byte[] inttoBytes(int data) {
+	public static byte[] inttoBytes(int data) {
  		return new byte[]{
  			(byte) ((data >> 24) & 0xff),
  			(byte) ((data >> 16) & 0xff),
@@ -113,11 +132,14 @@ class MyReliableUDPSocket extends DatagramSocket{
  		};
 	}
 
-	private static int getIntFromByteArray(byte[] data, int start){
-		return ((data[start]<<24) & 0xf000) + ((data[start+1]<<16) & 0x0f00) + ((data[start+2]<<8) & 0x00f0) + (data[start+3] & 0x000f); 
+	public static int getIntFromByteArray(byte[] data, int start){
+		ByteBuffer byteBuffer = ByteBuffer.allocate(Integer.BYTES);
+ 		byteBuffer.put(data, start, Integer.BYTES);
+ 		byteBuffer.flip();
+ 		return byteBuffer.getInt();
 	}
 
-	private static long getLongFromByteArray(byte[] data, int start){
+	public static long getLongFromByteArray(byte[] data, int start){
  		ByteBuffer byteBuffer = ByteBuffer.allocate(Long.BYTES);
  		byteBuffer.put(data, start, Long.BYTES);
  		byteBuffer.flip();
@@ -152,7 +174,7 @@ class MyReliableUDPSocket extends DatagramSocket{
 	private DatagramPacket createAckPacket(int seqNo, long  pcktid, InetAddress destAddr, int destPort){
 		byte[] pckt = new byte[ACK_PCKT_DATA_LENGTH];
 		int count = 0;
-		
+
 		// adding sequence number
 		byte[] temp = inttoBytes(seqNo);
 		for(int i=0;i<4;i++)
@@ -164,5 +186,67 @@ class MyReliableUDPSocket extends DatagramSocket{
 			pckt[count++]=temp[i];
 
 		return new DatagramPacket(pckt, pckt.length, destAddr, destPort);
+	}
+}
+
+class TransmissionHelperSender{
+	long packetID;
+	int packetCount;
+	int dataLength;
+	int receivedCount;
+	HashMap<Integer, DatagramPacket> map;
+	HashMap<Integer, Boolean> ackStatus;
+
+	private Thread receiver;
+	boolean threadExit;
+
+	public TransmissionHelperSender(){
+		map = new HashMap<>();
+		ackStatus = new HashMap<>();
+	}
+
+	void startReceiverThread(DatagramSocket sock){	
+        receiver = new Thread(){
+        	@Override
+        	public void run(){
+        		while(!threadExit){
+        			try{
+	        			byte[] buf = new byte[MyReliableUDPSocket.MAX_PACKET_SIZE];
+	        			DatagramPacket recv = new DatagramPacket(buf, buf.length);
+	        			sock.receive(recv);
+	        			int seqNo = MyReliableUDPSocket.getIntFromByteArray(buf, 0);
+	        			long pID = MyReliableUDPSocket.getLongFromByteArray(buf ,4);
+	        			if(seqNo<0){
+	        				System.out.println("Received acknowledgement "+ pID + " Seq No "+ seqNo);
+	        				if(packetID == pID){
+	        					ackStatus.put(seqNo*-1, true);
+	        				}
+	        			}
+	        		}
+	        		catch(Exception e){
+	
+        			}
+        		}
+        	}
+        };
+        threadExit = false;
+        receiver.start();
+	}
+	void stopReceiverThread(){
+		threadExit = true;
+	}
+}
+
+class TransmissionHelperRecevier{
+	long packetID;
+	int packetCount;//doesn't include the seq 0 packet
+	int dataLength;
+
+	byte[] data;
+
+	HashMap<Integer, DatagramPacket> map;
+	HashMap<Integer, Boolean> writtenStatus; // true if yet to be written otherwise not present
+	public TransmissionHelperRecevier(){
+		map = new HashMap<>();
 	}
 }
