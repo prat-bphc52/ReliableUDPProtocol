@@ -1,14 +1,19 @@
 import java.util.*;
 import java.net.*;
 import java.io.*;
+import java.nio.ByteBuffer;
 
 class MyReliableUDPSocket extends DatagramSocket{
+
+
 	private static int MAX_PACKET_DATA_LENGTH = 500;// in bytes
 	private static int MAX_PACKET_SIZE = Integer.BYTES+Long.BYTES+MAX_PACKET_DATA_LENGTH;
 	// 1st 4 bytes seq no, next 8 bytes packet id, 512 bytes
 	private static int TRANSMISSION_ID_PACKET_LENGTH = Integer.BYTES + Long.BYTES + Integer.BYTES + Integer.BYTES; 
 	// 20 bytes
 	// Integer for sequence number, Long for transmission ID, Integer Total number of packets, Integer Total data length in bytes
+
+	private static int ACK_PCKT_DATA_LENGTH = Integer.BYTES + Long.BYTES;
 
 	public MyReliableUDPSocket(int port, InetAddress hostIP)throws SocketException{
 		super(port, hostIP);
@@ -51,13 +56,13 @@ class MyReliableUDPSocket extends DatagramSocket{
 
 		DatagramPacket idPacket = new DatagramPacket(idArr, idArr.length, destAddr, destPort);
         try{
-        	System.out.print("\nSending Seq 0 packet");
-        	System.out.print("\nPacket ID : Timestamp - "+ timestamp);
+        	System.out.println("Sending Seq 0 packet");
+        	System.out.println("Packet ID : Timestamp - "+ timestamp);
         	send(idPacket);
 
         }
         catch(Exception e){
-        	System.out.print("\nFailed to send data");
+        	System.out.println("Failed to send data");
         	return -1;
         }
         return 0;
@@ -68,6 +73,12 @@ class MyReliableUDPSocket extends DatagramSocket{
 		DatagramPacket recv = new DatagramPacket(buf, buf.length);
 		try{
         	receive(recv);
+        	System.out.println("Received data length "+buf.length);
+			System.out.println(buf.toString());
+        	int seqNo = getIntFromByteArray(buf, 0);
+        	long packetID = getLongFromByteArray(buf ,4);
+        	System.out.println("Received a packet Address:"+recv.getAddress()+" Port"+recv.getPort()+" Seq no "+seqNo +" Packet ID"+packetID);
+        	send(createAckPacket(seqNo,packetID,recv.getAddress(),recv.getPort()));
         }
         catch(Exception e){
         	System.out.println("Error while receiving data");
@@ -76,6 +87,7 @@ class MyReliableUDPSocket extends DatagramSocket{
 		System.out.println("Received Data");
 		for(int i=0;i<12;i++)
 			System.out.print(buf[i]+" ");
+		System.out.println();
 		return buf;
 	}
 
@@ -101,7 +113,18 @@ class MyReliableUDPSocket extends DatagramSocket{
  		};
 	}
 
-	private DatagramPacket createPacket(int seqNo, byte[] id, byte[] data, int start, InetAddress destAddr, int destPort){
+	private static int getIntFromByteArray(byte[] data, int start){
+		return ((data[start]<<24) & 0xf000) + ((data[start+1]<<16) & 0x0f00) + ((data[start+2]<<8) & 0x00f0) + (data[start+3] & 0x000f); 
+	}
+
+	private static long getLongFromByteArray(byte[] data, int start){
+ 		ByteBuffer byteBuffer = ByteBuffer.allocate(Long.BYTES);
+ 		byteBuffer.put(data, start, Long.BYTES);
+ 		byteBuffer.flip();
+ 		return byteBuffer.getLong();
+	}
+
+	private DatagramPacket createDataPacket(int seqNo, byte[] id, byte[] data, int start, InetAddress destAddr, int destPort){
 		int packet_size = Integer.BYTES+Long.BYTES;
 		int end = start + MAX_PACKET_DATA_LENGTH;
 		if(end>data.length)
@@ -122,6 +145,23 @@ class MyReliableUDPSocket extends DatagramSocket{
 		// adding data
 		for(int i=start;i<end;i++)
 			pckt[count++]=data[i];
+
+		return new DatagramPacket(pckt, pckt.length, destAddr, destPort);
+	}
+
+	private DatagramPacket createAckPacket(int seqNo, long  pcktid, InetAddress destAddr, int destPort){
+		byte[] pckt = new byte[ACK_PCKT_DATA_LENGTH];
+		int count = 0;
+		
+		// adding sequence number
+		byte[] temp = inttoBytes(seqNo);
+		for(int i=0;i<4;i++)
+			pckt[count++]=temp[i];
+
+		// next 8 bytes packet id
+		temp = longtoBytes(pcktid);
+		for(int i=0;i<8;i++)
+			pckt[count++]=temp[i];
 
 		return new DatagramPacket(pckt, pckt.length, destAddr, destPort);
 	}
