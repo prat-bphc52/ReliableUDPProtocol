@@ -87,7 +87,7 @@ class MyReliableUDPSocket extends DatagramSocket{
         try{
         	send(idPacket);
 		} catch(Exception e){
-        	System.out.println("Failed to send data");
+        	System.out.println("Failed to send data"+ e.toString());
         }
 
         byte[] pc_id = longtoBytes(ths.packetID);
@@ -101,7 +101,7 @@ class MyReliableUDPSocket extends DatagramSocket{
         		System.out.println("Failed to send data");
         	}
         }
-       	System.out.print("Completed sending 1st batch of data");
+       	System.out.println("Completed sending 1st batch of data");
         // finished sending 1st batch of data
 
         boolean flag;//exit status
@@ -333,7 +333,7 @@ class TransmissionHelperSender{
         			sock.setSoTimeout(1000);
         		}
         		catch(SocketException se){
-        			System.out.print("Socket Exception occured...exiting!");
+        			System.out.println("Socket Exception occured...exiting!");
         			return;
         		}
         		while(!threadExit){
@@ -353,10 +353,10 @@ class TransmissionHelperSender{
 	        			}
 	        		}
 	        		catch(SocketTimeoutException ste){
-						System.out.print("Socket timed out! Reinitializing if transmission is still in progress");
+						System.out.println("Socket timed out! Reinitializing if transmission is still in progress");
 	        		}
 	        		catch(Exception e){
-						System.out.print("Socket Exception occured...exiting!");
+						System.out.println("Socket Exception occured...exiting!");
         				return;
         			}
         		}
