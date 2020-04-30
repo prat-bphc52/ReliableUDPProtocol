@@ -23,12 +23,12 @@ Compile the java code using the below command
 javac cserver.java cclient.java mysock.java
 ```
 
-Start the server and pass the following arguments <hostIP> <hostPort> <outputFileName>. For ex:
+Start the server and pass the following arguments **hostIP** **hostPort** **outputFileName**. For ex:
 ```
 java CServer 127.0.0.1 6000 output.txt
 ```
 
-Start the client and pass the following arguments <hostIP> <hostPort> <destinationIP> <destinationPort> <outputFileName>. For ex:
+Start the client and pass the following arguments **hostIP** **hostPort** **destinationIP** **destinationPort** **outputFileName**. For ex:
 ```
 java CClient 127.0.0.1 6001 127.0.0.1 6000 input.txt
 ```
