@@ -272,6 +272,13 @@ class TransmissionHelperSender{
         receiver = new Thread(){
         	@Override
         	public void run(){
+        		try{
+        			sock.setSoTimeout(1000);
+        		}
+        		catch(SocketException se){
+        			System.out.print("Socket Exception occured...exiting!");
+        			return;
+        		}
         		while(!threadExit){
         			try{
 	        			byte[] buf = new byte[MyReliableUDPSocket.MAX_PACKET_SIZE];
@@ -288,8 +295,12 @@ class TransmissionHelperSender{
 	        				}
 	        			}
 	        		}
+	        		catch(SocketTimeoutException ste){
+						System.out.print("Socket timed out! Reinitializing if transmission is still in progress");
+	        		}
 	        		catch(Exception e){
-	
+						System.out.print("Socket Exception occured...exiting!");
+        				return;
         			}
         		}
         	}
